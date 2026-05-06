@@ -5,11 +5,12 @@ set -e
 
 VENV=".venv"
 
-# 1. Ensure python3-venv + pip are installed
-if ! dpkg -s python3-venv >/dev/null 2>&1 || ! dpkg -s python3-pip >/dev/null 2>&1; then
-  echo "-> Installing Python tools (one-time, needs sudo)..."
+# 1. Ensure venv support is installed for whatever python3 version is present
+PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+if ! python3 -c "import ensurepip" >/dev/null 2>&1; then
+  echo "-> Installing python${PY_VER}-venv (needs sudo)..."
   sudo apt-get update -qq
-  sudo apt-get install -y python3 python3-venv python3-pip libcap2-bin
+  sudo apt-get install -y "python${PY_VER}-venv" libcap2-bin
 fi
 
 # 2. If venv exists but activate is missing, it's broken -- nuke and recreate
@@ -24,18 +25,17 @@ if [ ! -d "$VENV" ]; then
   python3 -m venv "$VENV"
 fi
 
-# 4. Activate (set +e guards against shells that return non-zero from source)
+# 4. Activate
 set +e
 source "$VENV/bin/activate"
 set -e
 
-# Confirm we're inside the venv
 if [ -z "$VIRTUAL_ENV" ]; then
   echo "ERROR: Failed to activate virtual environment."
   exit 1
 fi
 
-# 5. Install deps (always inside venv, never touches system Python)
+# 5. Install deps inside venv
 echo "-> Installing/updating dependencies..."
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q -r requirements.txt
