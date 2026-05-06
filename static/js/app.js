@@ -327,47 +327,4 @@ function extractError(err) {
 async function openSelfModal() {
   // Try to detect the hostname from the server
   try {
-    const info = await API.get('/api/self-info');
-    document.getElementById('self-hostname').value = info.hostname || '';
-    document.getElementById('self-preview').textContent = `${info.hostname}.local`;
-  } catch {
-    document.getElementById('self-hostname').value = '';
-    document.getElementById('self-preview').textContent = 'hostname.local';
-  }
-  openModal('self-modal');
-}
-
-document.getElementById('self-hostname').addEventListener('input', e => {
-  const val = e.target.value.trim().toLowerCase() || 'hostname';
-  document.getElementById('self-preview').textContent = `${val}.local`;
-});
-
-document.getElementById('btn-add-self').addEventListener('click', openSelfModal);
-document.getElementById('btn-add-self-banner')?.addEventListener('click', openSelfModal);
-
-document.getElementById('self-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const payload = {
-    hostname: document.getElementById('self-hostname').value.trim().toLowerCase(),
-    label:    document.getElementById('self-label').value.trim() || null,
-  };
-  try {
-    const result = await API.post('/api/devices/self', payload);
-    closeModal('self-modal');
-    await loadAll();
-    renderDashboard();
-    showToast(`Registered as ${result.device.local_hostname} ✓`);
-  } catch (err) {
-    showToast('Error: ' + extractError(err), true);
-  }
-});
-
-/* ── Boot ────────────────────────────────────────────────────────────── */
-(async () => {
-  await loadAll();
-  renderDashboard();
-  // Show setup banner if no devices registered yet
-  if (devices.length === 0) {
-    document.getElementById('setup-banner').style.display = 'flex';
-  }
-})();
+    const info = await API.get

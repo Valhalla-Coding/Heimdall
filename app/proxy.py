@@ -114,9 +114,4 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
                 status_code=502,
                 media_type="text/html",
             )
-        except Exception as exc:
-            return Response(
-                content=f"<h2>500 — Proxy Error</h2><p>{exc}</p>",
-                status_code=500,
-                media_type="text/html",
-            )
+        except

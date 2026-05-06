@@ -81,28 +81,4 @@ class ProxyResolver(BaseResolver):
 
         # Fall back to upstream
         try:
-            upstream = request.send(UPSTREAM_DNS, port=53, timeout=3)
-            return type(request).parse(upstream)
-        except Exception as exc:
-            log.warning(f"DNS upstream failed for {qname}: {exc}")
-            reply.header.rcode = 2  # SERVFAIL
-            return reply
-
-
-def start_dns_server() -> None:
-    """Start the DNS server (blocking — run in a background thread)."""
-    resolver = ProxyResolver()
-    logger   = DNSLogger(prefix=False)
-
-    server = DNSServer(resolver, port=DNS_PORT, address="0.0.0.0", logger=logger)
-
-    log.info(f"DNS server listening on 0.0.0.0:{DNS_PORT} — proxy IP: {PROXY_IP}")
-    try:
-        server.start()  # blocks
-    except PermissionError:
-        log.error(
-            f"DNS: permission denied on port {DNS_PORT}. "
-            "Run with sudo, or set DNS_PORT=5353 in your environment."
-        )
-    except Exception as exc:
-        log.error(f"DNS server error: {exc}")
+        
