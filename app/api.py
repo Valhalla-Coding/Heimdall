@@ -2,13 +2,11 @@
 REST API routes for managing devices and proxy routes.
 """
 
-import os
 import socket
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -17,7 +15,7 @@ from .database import get_db, Device, Route
 router = APIRouter(prefix="/api")
 
 
-# ── Pydantic schemas ──────────────────────────────────────────────────────────
+# -- Pydantic schemas ---------------------------------------------------------
 
 class DeviceOut(BaseModel):
     id: int
@@ -58,8 +56,8 @@ class RouteOut(BaseModel):
 
 
 class RouteCreate(BaseModel):
-    hostname: str           # e.g. "ai_image.oden"
-    target: str             # e.g. "192.168.1.10:7860"
+    hostname: str
+    target: str
     label: Optional[str] = None
     device_id: Optional[int] = None
     enabled: bool = True
@@ -73,7 +71,7 @@ class RouteUpdate(BaseModel):
     device_id: Optional[int] = None
 
 
-# ── Device endpoints ──────────────────────────────────────────────────────────
+# -- Device endpoints ---------------------------------------------------------
 
 @router.get("/devices", response_model=list[DeviceOut])
 def list_devices(db: Session = Depends(get_db)):
@@ -118,7 +116,7 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-# ── Route endpoints ───────────────────────────────────────────────────────────
+# -- Route endpoints ----------------------------------------------------------
 
 @router.get("/routes", response_model=list[RouteOut])
 def list_routes(db: Session = Depends(get_db)):
@@ -130,7 +128,6 @@ def create_route(body: RouteCreate, db: Session = Depends(get_db)):
     existing = db.query(Route).filter(Route.hostname == body.hostname).first()
     if existing:
         raise HTTPException(status_code=409, detail="A route for this hostname already exists.")
-    # Derive subdomain (everything before the first dot)
     subdomain = body.hostname.split(".")[0] if "." in body.hostname else None
     route = Route(
         hostname=body.hostname,
@@ -169,6 +166,70 @@ def delete_route(route_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-# ── "Add My Device" ───────────────────────────────────────────────────────────
+# -- Self-registration ("Add My Device") -------------------------------------
 
-clas
+def _get_lan_ip() -> str:
+    """Detect this machine's LAN IP via a UDP connect trick (no packets sent)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+
+
+class SelfRegister(BaseModel):
+    hostname: str
+    label: Optional[str] = None
+
+
+@router.get("/self-info")
+def self_info():
+    """Return detected hostname + IP so the UI can pre-fill the form."""
+    raw = socket.gethostname().lower().replace(" ", "-")
+    short = raw.split(".")[0]
+    return {"hostname": short, "ip": _get_lan_ip()}
+
+
+@router.post("/devices/self", response_model=DeviceOut, status_code=201)
+def register_self(body: SelfRegister, db: Session = Depends(get_db)):
+    """
+    One-click self-registration: detects this machine's IP, creates a Device
+    record, and adds hostname.local + www.hostname.local routes automatically.
+    """
+    ip = _get_lan_ip()
+    hostname = body.hostname.lower().strip()
+    label = body.label or hostname.capitalize()
+
+    # Upsert device
+    device = db.query(Device).filter(Device.ip == ip).first()
+    if not device:
+        device = Device(ip=ip, hostname=hostname, label=label,
+                        last_seen=datetime.now(timezone.utc))
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+    else:
+        device.hostname = hostname
+        device.label = label
+        device.last_seen = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(device)
+
+    # Create hostname.local route (landing page) if missing
+    root = f"{hostname}.local"
+    if not db.query(Route).filter(Route.hostname == root).first():
+        db.add(Route(hostname=root, target=f"{ip}:8080",
+                     label=f"{label} — Home", device_id=device.id,
+                     subdomain=hostname, enabled=True))
+
+    # Create www.hostname.local route if missing
+    www = f"www.{hostname}.local"
+    if not db.query(Route).filter(Route.hostname == www).first():
+        db.add(Route(hostname=www, target=f"{ip}:8080",
+                     label=f"{label} — www", device_id=device.id,
+                     subdomain="www", enabled=True))
+
+    db.commit()
+    db.refresh(device)
+    return device

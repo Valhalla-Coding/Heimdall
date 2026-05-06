@@ -44,8 +44,8 @@ document.querySelectorAll('.nav-link').forEach(link => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     link.classList.add('active');
     document.getElementById('view-' + view).classList.add('active');
-    if (view === 'devices') renderDevices();
-    if (view === 'routes') renderRoutes();
+    if (view === 'devices')   renderDevices();
+    if (view === 'routes')    renderRoutes();
     if (view === 'dashboard') renderDashboard();
   });
 });
@@ -76,6 +76,16 @@ async function renderDashboard() {
   await loadAll();
   document.getElementById('stat-devices').textContent = devices.length;
   document.getElementById('stat-routes').textContent  = routes.filter(r => r.enabled).length;
+
+  // Show setup banner on first run (no devices yet)
+  const banner = document.getElementById('setup-banner');
+  if (banner) banner.style.display = devices.length === 0 ? 'flex' : 'none';
+
+  // Update DNS hint in sidebar
+  try {
+    const info = await API.get('/api/self-info');
+    document.getElementById('dns-hint').textContent = 'DNS -> ' + info.ip + ':53';
+  } catch { /* ignore */ }
 
   const body = document.getElementById('dash-route-body');
   if (!routes.length) {
@@ -166,8 +176,8 @@ document.getElementById('btn-add-device').addEventListener('click', () => {
 
 document.getElementById('device-form').addEventListener('submit', async e => {
   e.preventDefault();
-  const id       = document.getElementById('device-id').value;
-  const payload  = {
+  const id      = document.getElementById('device-id').value;
+  const payload = {
     ip:       document.getElementById('device-ip').value.trim(),
     hostname: document.getElementById('device-hostname').value.trim(),
     label:    document.getElementById('device-label').value.trim() || null,
@@ -302,6 +312,46 @@ document.getElementById('route-form').addEventListener('submit', async e => {
   }
 });
 
+/* ── Self-registration ("Add My Device") ─────────────────────────────── */
+async function openSelfModal() {
+  try {
+    const info = await API.get('/api/self-info');
+    document.getElementById('self-hostname').value = info.hostname || '';
+    document.getElementById('self-ip').textContent  = info.ip || '—';
+    updateSelfPreview();
+  } catch {
+    document.getElementById('self-ip').textContent = 'unknown';
+  }
+  openModal('self-modal');
+}
+
+function updateSelfPreview() {
+  const h = document.getElementById('self-hostname').value.trim() || 'device';
+  document.getElementById('self-preview').textContent = h + '.local';
+}
+
+document.getElementById('self-hostname').addEventListener('input', updateSelfPreview);
+document.getElementById('btn-add-self').addEventListener('click', openSelfModal);
+document.getElementById('btn-add-self-banner').addEventListener('click', openSelfModal);
+
+document.getElementById('self-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {
+    hostname: document.getElementById('self-hostname').value.trim(),
+    label:    document.getElementById('self-label').value.trim() || null,
+  };
+  try {
+    const created = await API.post('/api/devices/self', payload);
+    devices = devices.filter(d => d.id !== created.id);
+    devices.push(created);
+    closeModal('self-modal');
+    showToast('Registered! Reachable at ' + payload.hostname + '.local');
+    renderDashboard();
+  } catch (err) {
+    showToast('Error: ' + extractError(err), true);
+  }
+});
+
 /* ── Utilities ───────────────────────────────────────────────────────── */
 function esc(str) {
   if (!str) return '';
@@ -323,8 +373,5 @@ function extractError(err) {
   }
 }
 
-/* ── Add My Device (self-registration) ───────────────────────────────── */
-async function openSelfModal() {
-  // Try to detect the hostname from the server
-  try {
-    const info = await API.get
+/* ── Init ────────────────────────────────────────────────────────────── */
+renderDashboard();

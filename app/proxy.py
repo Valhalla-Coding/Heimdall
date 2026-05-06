@@ -3,19 +3,17 @@ HTTP reverse-proxy middleware.
 
 When a request arrives with a Host header that matches a Route in the DB,
 this middleware either:
-  - Serves web/index.html  — if the host matches a device's own *.local hostname
-  - Forwards the request   — if the host matches a service route (e.g. ai_image.oden.local)
-  - Falls through          — for localhost/management UI access
+  - Serves web/index.html  -- if the host matches a device's own *.local hostname
+  - Forwards the request   -- if the host matches a service route
+  - Falls through          -- for localhost/management UI access
 """
 
-import os
 from pathlib import Path
 
 import httpx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import StreamingResponse, Response, FileResponse
-from sqlalchemy.orm import Session
 
 from .database import SessionLocal, Route, Device
 
@@ -28,42 +26,36 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
         host = request.headers.get("host", "").split(":")[0].lower()
 
         # Always pass through for localhost / management UI
-        if host in ("localhost", "127.0.0.1", "0.0.0.0"):
+        if host in ("localhost", "127.0.0.1", "0.0.0.0", ""):
             return await call_next(request)
 
-        db: Session = SessionLocal()
+        db = SessionLocal()
         try:
             route = (
                 db.query(Route)
                 .filter(Route.hostname == host, Route.enabled == True)
                 .first()
             )
-            # Check if this host is a device's root .local hostname
-            # e.g. "oden.local" — serve the landing page
-            is_device_root = (
-                db.query(Device)
-                .filter(Device.active == True)
-                .all()
-            )
+            devices = db.query(Device).filter(Device.active == True).all()
             device_root = any(
                 host == f"{d.hostname}.local" or host == f"www.{d.hostname}.local"
-                for d in is_device_root
+                for d in devices
             )
         finally:
             db.close()
 
-        # Serve landing page for device root hostnames
+        # Serve landing page for device root hostnames (e.g. oden.local)
         if device_root:
             landing = WEB_DIR / "index.html"
             if landing.exists():
                 return FileResponse(str(landing))
             return Response(
-                content="<h2>Landing page not found.</h2><p>Add a web/index.html file.</p>",
+                content="<h2>Landing page not found.</h2>",
                 status_code=404,
                 media_type="text/html",
             )
 
-        # No matching route — pass through to FastAPI (404)
+        # No matching route -- pass through to FastAPI
         if route is None:
             return await call_next(request)
 
@@ -86,10 +78,7 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 body = await request.body()
                 proxy_req = client.build_request(
-                    request.method,
-                    target_url,
-                    headers=headers,
-                    content=body,
+                    request.method, target_url, headers=headers, content=body,
                 )
                 resp = await client.send(proxy_req, stream=True)
 
@@ -101,8 +90,7 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
                     body_iter(),
                     status_code=resp.status_code,
                     headers={
-                        k: v
-                        for k, v in resp.headers.items()
+                        k: v for k, v in resp.headers.items()
                         if k.lower() not in (
                             "transfer-encoding", "content-encoding", "content-length"
                         )
@@ -114,4 +102,9 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
                 status_code=502,
                 media_type="text/html",
             )
-        except
+        except Exception as exc:
+            return Response(
+                content=f"<h2>502 — Proxy error</h2><p>{exc}</p>",
+                status_code=502,
+                media_type="text/html",
+            )
