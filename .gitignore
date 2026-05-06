@@ -2,6 +2,7 @@
 data.db
 *.db-shm
 *.db-wal
+*.db-journal
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/
@@ -33,8 +34,11 @@ logs/
 Thumbs.db
 desktop.ini
 
-# ── IDE / editor ─────────────────────────────────────────
+# ── IDE / editor ──────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# ── Windows-specific ──────────────────────────────────────
+dns-forwarder.ps1

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="page-title">Home</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0f14;
+      --surface: #161b24;
+      --border:  #2a3247;
+      --accent:  #4f8ef7;
+      --green:   #3ecf8e;
+      --text:    #e2e8f0;
+      --dim:     #718096;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+    }
+
+    .hero h1 span { color: var(--accent); }
+
+    .hero p {
+      color: var(--dim);
+      font-size: 16px;
+    }
+
+    .services {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      width: 100%;
+      max-width: 860px;
+      margin-bottom: 48px;
+    }
+
+    .service-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 20px;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .15s, transform .15s;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .service-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .service-icon { font-size: 28px; }
+    .service-name { font-weight: 700; font-size: 15px; }
+    .service-url  { font-size: 11px; color: var(--dim); font-family: monospace; }
+
+    .empty-state {
+      text-align: center;
+      color: var(--dim);
+      font-size: 14px;
+      padding: 32px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 860px;
+      margin-bottom: 48px;
+    }
+
+    .empty-state a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer {
+      color: var(--dim);
+      font-size: 12px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    footer a {
+      color: var(--dim);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--text); }
+
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <h1><span id="device-name">Home</span></h1>
+    <p id="device-label">Your local network portal</p>
+  </div>
+
+  <div id="services-container" class="empty-state">
+    Loading services…
+  </div>
+
+  <footer>
+    <span><span class="dot"></span>Online</span>
+    <a href="http://localhost:8080" id="mgmt-link">Management UI →</a>
+  </footer>
+
+  <script>
+    async function load() {
+      try {
+        // Fetch device info — figure out who we are from the hostname
+        const hostname = window.location.hostname; // e.g. "oden.local"
+        const deviceName = hostname.replace('.local', '');
+
+        document.getElementById('device-name').textContent =
+          deviceName.charAt(0).toUpperCase() + deviceName.slice(1);
+        document.getElementById('page-title').textContent =
+          deviceName.charAt(0).toUpperCase() + deviceName.slice(1);
+
+        // Fetch routes from the management API
+        const res = await fetch(`http://${hostname}:8080/api/routes`);
+        const routes = await res.json();
+
+        // Filter: show routes that belong to this device, skip management routes
+        const services = routes.filter(r =>
+          r.enabled &&
+          r.hostname !== hostname &&
+          !r.hostname.startsWith('www.') &&
+          r.label &&
+          !r.label.toLowerCase().includes('management')
+        );
+
+        const container = document.getElementById('services-container');
+
+        if (services.length === 0) {
+          container.innerHTML = `
+            No services configured yet.
+            <a href="http://${hostname}:8080">Add some in the management UI →</a>
+          `;
+          return;
+        }
+
+        container.className = 'services';
+        container.innerHTML = services.map(r => `
+          <a class="service-card" href="http://${r.hostname}">
+            <div class="service-icon">⚡</div>
+            <div class="service-name">${r.label || r.hostname}</div>
+            <div class="service-url">${r.hostname}</div>
+          </a>
+        `).join('');
+
+      } catch (e) {
+        document.getElementById('services-container').innerHTML =
+          'Could not load services. Is the proxy running?';
+      }
+    }
+
+    load();
+  </script>
+
+</body>
+</html>

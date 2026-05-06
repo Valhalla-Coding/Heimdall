@@ -2,55 +2,35 @@
 HTTP reverse-proxy middleware.
 
 When a request arrives with a Host header that matches a Route in the DB,
-this middleware forwards the request to the configured target and streams
-the response back. Everything else falls through to FastAPI normally.
+this middleware either:
+  - Serves web/index.html  — if the host matches a device's own *.local hostname
+  - Forwards the request   — if the host matches a service route (e.g. ai_image.oden.local)
+  - Falls through          — for localhost/management UI access
 """
+
+import os
+from pathlib import Path
 
 import httpx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import StreamingResponse, Response
+from starlette.responses import StreamingResponse, Response, FileResponse
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, Route
+from .database import SessionLocal, Route, Device
 
-
-async def _stream_response(client: httpx.AsyncClient, req: httpx.Request):
-    """Stream a proxied response back to the client."""
-    async with client.stream(
-        req.method,
-        req.url,
-        headers=req.headers,
-        content=req.content,
-    ) as resp:
-        async def body_iter():
-            async for chunk in resp.aiter_bytes():
-                yield chunk
-
-        return StreamingResponse(
-            body_iter(),
-            status_code=resp.status_code,
-            headers=dict(resp.headers),
-        )
+WEB_DIR = Path(__file__).parent.parent / "web"
 
 
 class ReverseProxyMiddleware(BaseHTTPMiddleware):
-    """
-    Intercepts requests whose Host header matches a configured route.
-    Non-matching requests fall through to the normal FastAPI router.
-    """
-
-    # Paths that should NEVER be proxied (the management UI itself)
-    PASSTHROUGH_PREFIXES = ("/api/", "/static/", "/", "/_")
 
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "").split(":")[0].lower()
 
-        # Always pass through the management UI paths when accessed directly
+        # Always pass through for localhost / management UI
         if host in ("localhost", "127.0.0.1", "0.0.0.0"):
             return await call_next(request)
 
-        # Look up the route in the DB
         db: Session = SessionLocal()
         try:
             route = (
@@ -58,14 +38,36 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
                 .filter(Route.hostname == host, Route.enabled == True)
                 .first()
             )
+            # Check if this host is a device's root .local hostname
+            # e.g. "oden.local" — serve the landing page
+            is_device_root = (
+                db.query(Device)
+                .filter(Device.active == True)
+                .all()
+            )
+            device_root = any(
+                host == f"{d.hostname}.local" or host == f"www.{d.hostname}.local"
+                for d in is_device_root
+            )
         finally:
             db.close()
 
+        # Serve landing page for device root hostnames
+        if device_root:
+            landing = WEB_DIR / "index.html"
+            if landing.exists():
+                return FileResponse(str(landing))
+            return Response(
+                content="<h2>Landing page not found.</h2><p>Add a web/index.html file.</p>",
+                status_code=404,
+                media_type="text/html",
+            )
+
+        # No matching route — pass through to FastAPI (404)
         if route is None:
-            # No matching route — pass through (404 will come from FastAPI)
             return await call_next(request)
 
-        # Build the target URL
+        # Forward to the target service
         target = route.target
         if not target.startswith(("http://", "https://")):
             target = f"http://{target}"
@@ -76,9 +78,8 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
         if query:
             target_url += f"?{query}"
 
-        # Forward the request
         headers = dict(request.headers)
-        headers["host"] = route.target.split(":")[0]  # rewrite Host header
+        headers["host"] = route.target.split(":")[0]
         headers.pop("x-forwarded-for", None)
 
         try:
@@ -102,19 +103,20 @@ class ReverseProxyMiddleware(BaseHTTPMiddleware):
                     headers={
                         k: v
                         for k, v in resp.headers.items()
-                        if k.lower()
-                        not in ("transfer-encoding", "content-encoding", "content-length")
+                        if k.lower() not in (
+                            "transfer-encoding", "content-encoding", "content-length"
+                        )
                     },
                 )
         except httpx.ConnectError:
             return Response(
-                content=f"<h2>Proxy Error</h2><p>Could not connect to <code>{route.target}</code></p>",
+                content=f"<h2>502 — Could not connect</h2><p><code>{route.target}</code> is not reachable.</p>",
                 status_code=502,
                 media_type="text/html",
             )
         except Exception as exc:
             return Response(
-                content=f"<h2>Proxy Error</h2><p>{exc}</p>",
+                content=f"<h2>500 — Proxy Error</h2><p>{exc}</p>",
                 status_code=500,
                 media_type="text/html",
             )
