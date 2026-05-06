@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Heimdall -- start script
+
 set -e
 
 VENV=".venv"
@@ -18,15 +19,19 @@ if [ ! -d "$VENV" ]; then
 fi
 
 # 3. Activate and install deps
+# (source can return non-zero on some shells, so disable errexit around it)
+set +e
 source "$VENV/bin/activate"
+set -e
+
 echo "-> Installing/updating dependencies..."
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
 # 4. Grant low-port binding (53 + 80) without sudo at runtime
-PYTHON_BIN="$(which python3)"
+PYTHON_BIN="$VENV/bin/python3"
 if ! getcap "$PYTHON_BIN" 2>/dev/null | grep -q cap_net_bind_service; then
-  echo "-> Granting cap_net_bind_service to $PYTHON_BIN (needs sudo once)..."
+  echo "-> Granting cap_net_bind_service (needs sudo once)..."
   sudo setcap cap_net_bind_service=+eip "$PYTHON_BIN"
 fi
 
@@ -66,7 +71,7 @@ echo " HTTP proxy    : http://$LAN_IP:80"
 echo " DNS server    : $LAN_IP:53 (UDP)"
 echo "=============================="
 echo " Point your router DNS Server 1 to: $LAN_IP"
-echo " Then visit http://<yourdevice>.local from any device on the network."
+echo " Then visit http://<yourdevice>.local from any LAN device."
 echo ""
 echo " Press Ctrl+C to stop."
 
