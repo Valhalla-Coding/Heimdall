@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reverse Proxy</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<div id="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <span class="logo-icon">⇌</span>
+      <span class="logo-text">Reverse Proxy</span>
+    </div>
+    <nav>
+      <a href="#" class="nav-link active" data-view="dashboard">Dashboard</a>
+      <a href="#" class="nav-link" data-view="devices">Devices</a>
+      <a href="#" class="nav-link" data-view="routes">Routes</a>
+    </nav>
+    <div class="sidebar-footer">
+      <span id="dns-hint">DNS → 192.168.1.10:53</span>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- ── Dashboard ── -->
+    <section id="view-dashboard" class="view active">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <button class="btn btn-primary" id="btn-add-self">+ Add My Device</button>
+      </div>
+      <div id="setup-banner" class="setup-banner" style="display:none">
+        <span>👋 First time? Register this machine to get started.</span>
+        <button class="btn btn-primary btn-sm" id="btn-add-self-banner">Add My Device</button>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-devices">–</div>
+          <div class="stat-label">Devices</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-routes">–</div>
+          <div class="stat-label">Active Routes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">53</div>
+          <div class="stat-label">DNS Port</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">8080</div>
+          <div class="stat-label">Proxy Port</div>
+        </div>
+      </div>
+      <div class="section-title">Quick Route Overview</div>
+      <table class="table" id="dash-route-table">
+        <thead>
+          <tr><th>Hostname</th><th>→ Target</th><th>Status</th></tr>
+        </thead>
+        <tbody id="dash-route-body">
+          <tr><td colspan="3" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ── Devices ── -->
+    <section id="view-devices" class="view">
+      <div class="page-header">
+        <h1>Devices</h1>
+        <button class="btn btn-primary" id="btn-add-device">+ Add Device</button>
+      </div>
+      <table class="table" id="device-table">
+        <thead>
+          <tr><th>Hostname</th><th>IP</th><th>Label</th><th>Last Seen</th><th>Active</th><th></th></tr>
+        </thead>
+        <tbody id="device-body">
+          <tr><td colspan="6" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ── Routes ── -->
+    <section id="view-routes" class="view">
+      <div class="page-header">
+        <h1>Routes</h1>
+        <button class="btn btn-primary" id="btn-add-route">+ Add Route</button>
+      </div>
+      <table class="table" id="route-table">
+        <thead>
+          <tr><th>Custom Hostname</th><th>→ Target</th><th>Label</th><th>Device</th><th>Enabled</th><th></th></tr>
+        </thead>
+        <tbody id="route-body">
+          <tr><td colspan="6" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Device Modal ── -->
+<div class="modal-overlay" id="device-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="device-modal-title">Add Device</h2>
+      <button class="modal-close" data-modal="device-modal">✕</button>
+    </div>
+    <form id="device-form">
+      <input type="hidden" id="device-id" />
+      <label>IP Address <input type="text" id="device-ip" placeholder="192.168.1.10" required /></label>
+      <label>Hostname <input type="text" id="device-hostname" placeholder="oden" required /></label>
+      <label>Label (optional) <input type="text" id="device-label" placeholder="My Gaming PC" /></label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-modal="device-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Route Modal ── -->
+<div class="modal-overlay" id="route-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="route-modal-title">Add Route</h2>
+      <button class="modal-close" data-modal="route-modal">✕</button>
+    </div>
+    <form id="route-form">
+      <input type="hidden" id="route-id" />
+      <label>Custom Hostname
+        <input type="text" id="route-hostname" placeholder="ai_image.oden.local" required />
+        <small>Use <code>.local</code> suffix — e.g. <code>ai_image.oden.local</code></small>
+      </label>
+      <label>Target (IP:Port)
+        <input type="text" id="route-target" placeholder="192.168.1.10:7860" required />
+        <small>Where traffic gets forwarded to</small>
+      </label>
+      <label>Label (optional) <input type="text" id="route-label" placeholder="AI Image Gen" /></label>
+      <label>Device
+        <select id="route-device">
+          <option value="">— none —</option>
+        </select>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="route-enabled" checked />
+        Enabled
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-modal="route-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add My Device Modal ── -->
+<div class="modal-overlay" id="self-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add My Device</h2>
+      <button class="modal-close" data-modal="self-modal">✕</button>
+    </div>
+    <p style="color:var(--text-dim); margin-bottom:20px; font-size:13px;">
+      Register this machine as a device. It'll automatically become reachable
+      at <strong id="self-preview">hostname.local</strong> on your network.
+    </p>
+    <form id="self-form">
+      <label>Hostname
+        <input type="text" id="self-hostname" placeholder="oden" required />
+        <small>Other devices will reach this machine at <code>&lt;hostname&gt;.local</code></small>
+      </label>
+      <label>Label (optional)
+        <input type="text" id="self-label" placeholder="My Home Server" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-modal="self-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Register</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast" class="toast"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
