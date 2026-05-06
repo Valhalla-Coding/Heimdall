@@ -21,7 +21,14 @@ echo "-> Installing dependencies..."
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q -r requirements.txt
 
-# 3. Detect LAN IP
+# 3. Grant port 53 binding capability (needed once after venv creation)
+REAL_PY=$(readlink -f "$VENV/bin/python3")
+if ! getcap "$REAL_PY" 2>/dev/null | grep -q cap_net_bind_service; then
+  echo "-> Granting cap_net_bind_service to $REAL_PY (needs sudo)..."
+  sudo setcap cap_net_bind_service=+eip "$REAL_PY"
+fi
+
+# 4. Detect LAN IP
 LAN_IP=$("$VENV/bin/python3" -c "
 import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -34,12 +41,12 @@ echo ""
 echo "=============================="
 echo " Heimdall is running!"
 echo " Management UI : http://$LAN_IP:8080"
-echo " DNS server    : $LAN_IP:5353 (UDP)"
+echo " DNS server    : $LAN_IP:53 (UDP)"
 echo "=============================="
 echo " Router DNS: set to $LAN_IP"
 echo " Press Ctrl+C to stop."
 echo ""
 
-# 4. Start (ports 8080 + 5353 -- no root needed)
-PROXY_IP="$LAN_IP" DNS_PORT=5353 \
+# 5. Start (port 8080 mgmt + port 53 DNS)
+PROXY_IP="$LAN_IP" \
   "$VENV/bin/uvicorn" app.main:app --host 0.0.0.0 --port 8080 --log-level info
